@@ -145,6 +145,7 @@
         display: flex;
         gap: 6px;
         flex: 0 0 auto;
+        margin-bottom: 6px;
       }
 
       .map-actions button {
@@ -238,18 +239,22 @@
 
       @media (max-width: 600px) {
         body {
+          justify-content: flex-start;
           align-items: flex-start;
           padding-top: env(safe-area-inset-top);
         }
 
         .container {
-          width: min(100vw, calc(100vh - env(safe-area-inset-top) - 60px));
-          height: min(100vw, calc(100vh - env(safe-area-inset-top) - 60px));
+          order: 3;
+          width: min(100vw, calc(100vh - env(safe-area-inset-top) - 120px));
+          height: min(100vw, calc(100vh - env(safe-area-inset-top) - 120px));
           border-radius: 0;
         }
 
         .map-actions {
-          margin-bottom: 8px;
+          order: 2;
+          justify-content: center;
+          margin: 0 0 8px 8px;
         }
 
         .map-actions button {
@@ -259,9 +264,11 @@
         }
 
         .icon-palette {
-          bottom: max(8px, env(safe-area-inset-bottom));
-          right: 8px;
-          left: 8px;
+          position: static;
+          order: 1;
+          width: calc(100% - 16px);
+          margin: 8px;
+          box-sizing: border-box;
           max-height: 80px;
           padding: 4px;
           display: grid;
@@ -298,16 +305,6 @@
   </head>
 
   <body>
-    <div class="map-actions" aria-label="Map file actions">
-      <button id="exportButton" type="button">Export</button>
-      <button id="importButton" type="button">Import</button>
-      <input id="importInput" type="file" accept="application/json,.json" hidden>
-    </div>
-
-    <div class="container">
-      <div class="grid" id="grid"></div>
-    </div>
-
     <div class="icon-palette" id="palette">
       <div class="palette-item spice" data-class="spice" data-icon="spice" data-name="Spice" draggable="true">
         <img src="assets/spice.svg" alt="Spice" width="24" height="24">
@@ -334,7 +331,14 @@
         <span>Shipwreck</span>
       </div>
     </div>
-
+    <div class="map-actions">
+      <button id="exportButton">Export Map</button>
+      <button id="importButton">Import Map</button>
+      <input id="importInput" type="file" accept=".json" style="display: none">
+    </div>
+    <div class="container">
+      <div class="grid" id="grid"></div>
+    </div>
     <div class="context-menu" id="contextMenu">
       <div class="context-menu-item" data-action="delete">Delete Icon</div>
       <div class="context-menu-item" data-action="clear-cell">Clear Cell</div>
@@ -389,11 +393,18 @@
         const { iconType, iconClass, source, sourceCell } = touchDrag;
         const targetCell = getCellAtPoint(clientX, clientY);
         const isValidTarget = targetCell && grid.contains(targetCell);
-        const duplicateIcon = isValidTarget && Array.from(targetCell.querySelectorAll(".icon")).some(
-          (icon) => icon.dataset.iconType === iconType && icon !== source,
-        );
+        const duplicateIcon =
+          isValidTarget &&
+          Array.from(targetCell.querySelectorAll(".icon")).some(
+            (icon) => icon.dataset.iconType === iconType && icon !== source,
+          );
 
-        if (isValidTarget && sourceCell !== targetCell && !duplicateIcon && targetCell.querySelectorAll(".icon").length < 4) {
+        if (
+          isValidTarget &&
+          sourceCell !== targetCell &&
+          !duplicateIcon &&
+          targetCell.querySelectorAll(".icon").length < 4
+        ) {
           if (source) {
             source.remove();
             updateIconPositions(sourceCell);
