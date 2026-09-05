@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Dessert</title>
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+        font-family: Arial, sans-serif;
+        box-sizing: border-box;
+      }
+
+      .container {
+        background-color: white;
+        width: min(100vw, 100vh);
+        height: min(100vw, 100vh);
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-sizing: border-box;
+      }
+
+      .grid {
+        display: inline-grid;
+        grid-template-columns: repeat(9, 1fr);
+        grid-template-rows: repeat(9, 1fr);
+        background-color: #333;
+        width: 99%;
+        height: 99%;
+      }
+
+      .cell {
+        background-color: white;
+        border: 1px solid #ddd;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-weight: bold;
+        font-size: clamp(12px, 3vw, 20px);
+        position: relative;
+      }
+
+      .icon {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        cursor: grab;
+        user-select: none;
+        padding: 2px;
+        border: 1px solid #8b7355;
+        border-radius: 4px;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        font-weight: bold;
+      }
+
+      .cell > .icon.position-2 {
+        left: auto;
+        right: 2px;
+      }
+
+      .cell > .icon.position-3 {
+        top: auto;
+        right: 2px;
+        bottom: 2px;
+      }
+
+      .cell > .icon.position-4 {
+        top: auto;
+        right: auto;
+        bottom: 2px;
+      }
+
+      .icon:active {
+        cursor: grabbing;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+      }
+
+      .icon.selected {
+        box-shadow:
+          0 0 8px #ff6b6b,
+          0 2px 4px rgba(0, 0, 0, 0.3);
+        border-color: #ff6b6b;
+      }
+
+      .icon svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .context-menu {
+        position: fixed;
+        background-color: white;
+        border: 2px solid #8b7355;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        display: none;
+        min-width: 120px;
+      }
+
+      .context-menu.show {
+        display: block;
+      }
+
+      .context-menu-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        color: #333;
+        font-size: 14px;
+        user-select: none;
+      }
+
+      .context-menu-item:hover {
+        background-color: #f0f0f0;
+      }
+
+      .icon-palette {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        background-color: white;
+        border: 2px solid #333;
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        z-index: 100;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .palette-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        margin: 4px 0;
+        background-color: #f5f5f5;
+        border: 2px solid #8b7355;
+        border-radius: 4px;
+        cursor: grab;
+        user-select: none;
+        font-size: 16px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .palette-item:active {
+        cursor: grabbing;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      .palette-item span:first-child {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 3px;
+        border: 1px solid #8b7355;
+        padding: 2px;
+        flex-shrink: 0;
+      }
+
+      .palette-item img {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+        border: 1px solid #8b7355;
+        border-radius: 3px;
+        padding: 2px;
+        flex-shrink: 0;
+      }
+
+      .palette-item svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .palette-item span:last-child {
+        font-size: 12px;
+        color: #666;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="icon-palette" id="palette">
+      <div class="palette-item spice" data-class="spice" data-icon="spice" data-name="Spice" draggable="true">
+        <img src="assets/spice.svg" alt="Spice" width="24" height="24">
+        <span>Spice</span>
+      </div>
+      <div class="palette-item stravidium" data-class="stravidium" data-icon="stravidium" data-name="Stravidium" draggable="true">
+        <img src="assets/stravidium.svg" alt="Stravidium" width="24" height="24">
+        <span>Stravidium</span>
+      </div>
+      <div class="palette-item titanium" data-class="titanium" data-icon="titanium" data-name="Titanium" draggable="true">
+        <img src="assets/titanium.svg" alt="Titanium" width="24" height="24">
+        <span>Titanium</span>
+      </div>
+      <div class="cave palette-item" data-class="cave" data-icon="cave" data-name="Cave" draggable="true">
+        <img src="assets/cave.svg" alt="Cave" width="24" height="24">
+        <span>Cave</span>
+      </div>
+      <div class="lab palette-item" data-class="lab" data-icon="lab" data-name="Lab" draggable="true">
+        <img src="assets/lab.svg" alt="Lab" width="24" height="24">
+        <span>Lab</span>
+      </div>
+      <div class="palette-item shipwreck" data-class="shipwreck" data-icon="shipwreck" data-name="Shipwreck" draggable="true">
+        <img src="assets/shipwreck.svg" alt="Shipwreck" width="24" height="24">
+        <span>Shipwreck</span>
+      </div>
+    </div>
+
+    <div class="context-menu" id="contextMenu">
+      <div class="context-menu-item" data-action="delete">Delete Icon</div>
+      <div class="context-menu-item" data-action="clear-cell">Clear Cell</div>
+    </div>
+
+    <script>
+      const grid = document.getElementById("grid");
+      const palette = document.getElementById("palette");
+
+      // Create 9x9 grid of cells with labels
+      const rows = ["I", "H", "G", "F", "E", "D", "C", "B", "A"];
+      const cells = [];
+
+      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+        for (let col = 1; col <= 9; col++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.textContent = rows[rowIdx] + col;
+          cell.dataset.row = rowIdx;
+          cell.dataset.col = col;
+          grid.appendChild(cell);
+          cells.push(cell);
+        }
+      }
+
+      // Dragging state
+      let draggedIcon = null;
+      let draggedFrom = null;
+      let draggedClass = null;
+      let draggedSVG = null;
+      let sourceIcon = null;
+      let dropSuccessful = false;
+
+      // Icon template URLs
+      const iconTemplates = {
+        spice: "assets/spice.svg",
+        stravidium: "assets/stravidium.svg",
+        titanium: "assets/titanium.svg",
+        cave: "assets/cave.svg",
+        lab: "assets/lab.svg",
+        shipwreck: "assets/shipwreck.svg",
+      };
+
+      const storageKey = "deep-dessert-grid";
+
+      const saveGrid = () => {
+        const savedIcons = cells.map((cell) => {
+          return Array.from(cell.querySelectorAll(".icon"), (icon) => ({
+            type: icon.dataset.iconType,
+            className: icon.dataset.iconClass,
+          }));
+        });
+        localStorage.setItem(storageKey, JSON.stringify(savedIcons));
+      };
+
+      const updateIconPositions = (cell) => {
+        cell.querySelectorAll(".icon").forEach((icon, index) => {
+          icon.classList.remove("position-1", "position-2", "position-3", "position-4");
+          icon.classList.add(`position-${index + 1}`);
+          const positions = [
+            { top: "2px", right: "auto", bottom: "auto", left: "2px" },
+            { top: "2px", right: "2px", bottom: "auto", left: "auto" },
+            { top: "auto", right: "2px", bottom: "2px", left: "auto" },
+            { top: "auto", right: "auto", bottom: "2px", left: "2px" },
+          ];
+          Object.assign(icon.style, positions[index]);
+        });
+      };
+
+      const createIcon = (iconType, iconClass) => {
+        const icon = document.createElement("div");
+        icon.className = "icon";
+        if (iconClass) {
+          icon.classList.add(iconClass);
+        }
+
+        const img = document.createElement("img");
+        img.src = iconTemplates[iconType];
+        img.alt = iconType;
+        img.width = 24;
+        img.height = 24;
+        icon.appendChild(img);
+
+        icon.draggable = true;
+        icon.title = iconType;
+        icon.dataset.iconType = iconType;
+        icon.dataset.iconClass = iconClass;
+
+        icon.addEventListener("dragstart", (dragStartEvent) => {
+          draggedIcon = icon.dataset.iconType;
+          draggedClass = icon.dataset.iconClass;
+          draggedSVG = iconTemplates[draggedIcon];
+          draggedFrom = "grid";
+          sourceIcon = icon;
+          dropSuccessful = false;
+          dragStartEvent.dataTransfer.effectAllowed = "move";
+
+          const dragEndHandler = () => {
+            setTimeout(() => {
+              if (!dropSuccessful && sourceIcon && sourceIcon.parentNode) {
+                const sourceCell = sourceIcon.closest(".cell");
+                sourceIcon.remove();
+                if (sourceCell) updateIconPositions(sourceCell);
+                saveGrid();
+              }
+              dropSuccessful = false;
+              icon.removeEventListener("dragend", dragEndHandler);
+            }, 0);
+          };
+          icon.addEventListener("dragend", dragEndHandler);
+        });
+
+        icon.addEventListener("dragend", () => {
+          setTimeout(() => {
+            draggedIcon = null;
+            draggedClass = null;
+            draggedSVG = null;
+            draggedFrom = null;
+            sourceIcon = null;
+          }, 0);
+        });
+
+        return icon;
+      };
+
+      // Palette items dragging
+      palette.addEventListener("dragstart", (e) => {
+        if (e.target.closest(".palette-item")) {
+          const item = e.target.closest(".palette-item");
+          draggedIcon = item.dataset.icon;
+          draggedClass = item.dataset.class;
+          draggedSVG = iconTemplates[draggedIcon];
+          draggedFrom = "palette";
+          sourceIcon = null;
+          e.dataTransfer.effectAllowed = "copy";
+        }
+      });
+
+      // Grid cell dragging
+      grid.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = draggedFrom === "grid" ? "move" : "copy";
+      });
+
+      grid.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (!draggedIcon || !draggedSVG) return;
+
+        // Find which cell was dropped on
+        const rect = grid.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Calculate grid dimensions
+        const cellWidth = rect.width / 9;
+        const cellHeight = rect.height / 9;
+
+        const colIndex = Math.floor(x / cellWidth);
+        const rowIndex = Math.floor(y / cellHeight);
+
+        if (colIndex >= 0 && colIndex < 9 && rowIndex >= 0 && rowIndex < 9) {
+          const cellIndex = rowIndex * 9 + colIndex;
+          const targetCell = cells[cellIndex];
+
+          // Don't drop on the same cell
+          if (draggedFrom === "grid" && sourceIcon && sourceIcon.closest(".cell") === targetCell) {
+            dropSuccessful = true;
+            return;
+          }
+
+          const duplicateIcon = Array.from(targetCell.querySelectorAll(".icon")).some(
+            (icon) => icon.dataset.iconType === draggedIcon && icon !== sourceIcon,
+          );
+          if (duplicateIcon) {
+            dropSuccessful = true;
+            return;
+          }
+
+          if (targetCell.querySelectorAll(".icon").length >= 4) {
+            dropSuccessful = true;
+            return;
+          }
+
+          // Remove source icon if dragging from grid
+          if (draggedFrom === "grid" && sourceIcon) {
+            const sourceCell = sourceIcon.closest(".cell");
+            sourceIcon.remove();
+            if (sourceCell) updateIconPositions(sourceCell);
+            sourceIcon = null;
+          }
+
+          const icon = createIcon(draggedIcon, draggedClass);
+          targetCell.appendChild(icon);
+          updateIconPositions(targetCell);
+          dropSuccessful = true;
+        } else if (draggedFrom === "grid" && sourceIcon) {
+          // Dropped outside grid, remove the icon
+          sourceIcon.remove();
+          sourceIcon = null;
+          dropSuccessful = true;
+        }
+
+        saveGrid();
+
+        draggedIcon = null;
+        draggedClass = null;
+        draggedSVG = null;
+        draggedFrom = null;
+        sourceIcon = null;
+      });
+
+      palette.addEventListener("dragend", () => {
+        draggedIcon = null;
+        draggedClass = null;
+        draggedSVG = null;
+        draggedFrom = null;
+      });
+
+      // Context menu handling
+      const contextMenu = document.getElementById("contextMenu");
+      let selectedIcon = null;
+
+      // Global drop handler to catch drops anywhere on the document
+      document.addEventListener("dragover", (e) => {
+        if (draggedFrom === "grid") {
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener("drop", (e) => {
+        // If a grid icon was dragged but not dropped on a valid grid cell, remove it
+        if (draggedFrom === "grid" && sourceIcon && sourceIcon.parentNode) {
+          const gridRect = grid.getBoundingClientRect();
+          const x = e.clientX;
+          const y = e.clientY;
+
+          // Check if drop is outside the grid
+          if (x < gridRect.left || x > gridRect.right || y < gridRect.top || y > gridRect.bottom) {
+            const sourceCell = sourceIcon.closest(".cell");
+            sourceIcon.remove();
+            if (sourceCell) updateIconPositions(sourceCell);
+            dropSuccessful = true;
+            saveGrid();
+          }
+        }
+      });
+
+      document.addEventListener("click", () => {
+        contextMenu.classList.remove("show");
+      });
+
+      // Add context menu to grid
+      grid.addEventListener("contextmenu", (e) => {
+        const icon = e.target.closest(".icon");
+        if (icon) {
+          e.preventDefault();
+          selectedIcon = icon;
+          contextMenu.style.left = e.clientX + "px";
+          contextMenu.style.top = e.clientY + "px";
+          contextMenu.classList.add("show");
+        }
+      });
+
+      // Context menu actions
+      document.querySelectorAll(".context-menu-item").forEach((item) => {
+        item.addEventListener("click", (e) => {
+          const action = e.target.dataset.action;
+          if (action === "delete" && selectedIcon) {
+            const cell = selectedIcon.closest(".cell");
+            selectedIcon.remove();
+            if (cell) updateIconPositions(cell);
+            selectedIcon = null;
+            saveGrid();
+          } else if (action === "clear-cell" && selectedIcon) {
+            const cell = selectedIcon.closest(".cell");
+            if (cell) {
+              const icons = cell.querySelectorAll(".icon");
+              icons.forEach((icon) => icon.remove());
+              updateIconPositions(cell);
+            }
+            selectedIcon = null;
+            saveGrid();
+          }
+          contextMenu.classList.remove("show");
+        });
+      });
+
+      // Keyboard support (Delete key)
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          const selectedIcons = document.querySelectorAll(".icon.selected");
+          if (selectedIcons.length > 0) {
+            selectedIcons.forEach((icon) => {
+              const cell = icon.closest(".cell");
+              icon.remove();
+              if (cell) updateIconPositions(cell);
+            });
+            saveGrid();
+          }
+          document.querySelectorAll(".icon.selected").forEach((i) => i.classList.remove("selected"));
+          selectedIcon = null;
+        }
+      });
+
+      // Add click to select icon
+      grid.addEventListener("click", (e) => {
+        const icon = e.target.closest(".icon");
+        if (icon) {
+          document.querySelectorAll(".icon.selected").forEach((i) => {
+            if (i !== icon) i.classList.remove("selected");
+          });
+          icon.classList.toggle("selected");
+          selectedIcon = icon.classList.contains("selected") ? icon : null;
+        } else {
+          document.querySelectorAll(".icon.selected").forEach((i) => i.classList.remove("selected"));
+          selectedIcon = null;
+        }
+      });
+
+      try {
+        const savedIcons = JSON.parse(localStorage.getItem(storageKey) || "[]");
+        savedIcons.forEach((savedIcon, cellIndex) => {
+          const icons = Array.isArray(savedIcon) ? savedIcon : savedIcon ? [savedIcon] : [];
+          icons.slice(0, 4).forEach((iconData) => {
+            if (iconData && iconTemplates[iconData.type] && cells[cellIndex]) {
+              cells[cellIndex].appendChild(createIcon(iconData.type, iconData.className));
+            }
+          });
+          if (cells[cellIndex]) updateIconPositions(cells[cellIndex]);
+        });
+      } catch (error) {
+        localStorage.removeItem(storageKey);
+      }
+    </script>
+  </body>
+</html>
