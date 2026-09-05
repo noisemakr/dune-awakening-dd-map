@@ -7,19 +7,21 @@
     <style>
       body {
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
-        height: 100vh;
+        min-height: 100vh;
         margin: 0;
         background-color: #f0f0f0;
         font-family: Arial, sans-serif;
         box-sizing: border-box;
+        overflow: hidden;
       }
 
       .container {
         background-color: white;
-        width: min(100vw, 100vh);
-        height: min(100vw, 100vh);
+        width: min(100vw, calc(100vh - 52px), 720px);
+        height: min(100vw, calc(100vh - 52px), 720px);
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         display: flex;
@@ -61,10 +63,14 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: clamp(18px, 52%, 28px);
+        height: clamp(18px, 52%, 28px);
+        max-width: calc(100% - 6px);
+        max-height: calc(100% - 6px);
+        box-sizing: border-box;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         font-weight: bold;
+        touch-action: none;
       }
 
       .cell > .icon.position-2 {
@@ -134,6 +140,29 @@
         background-color: #f0f0f0;
       }
 
+      .map-actions {
+        position: static;
+        display: flex;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+
+      .map-actions button {
+        min-height: 36px;
+        padding: 6px 10px;
+        border: 1px solid #8b7355;
+        border-radius: 4px;
+        background-color: white;
+        color: #333;
+        font: inherit;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+
+      .map-actions button:hover {
+        background-color: #f5f5f5;
+      }
+
       .icon-palette {
         position: fixed;
         bottom: 10px;
@@ -161,6 +190,7 @@
         user-select: none;
         font-size: 16px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        touch-action: none;
       }
 
       .palette-item:active {
@@ -205,10 +235,75 @@
         font-size: 12px;
         color: #666;
       }
+
+      @media (max-width: 600px) {
+        body {
+          align-items: flex-start;
+          padding-top: env(safe-area-inset-top);
+        }
+
+        .container {
+          width: min(100vw, calc(100vh - env(safe-area-inset-top) - 60px));
+          height: min(100vw, calc(100vh - env(safe-area-inset-top) - 60px));
+          border-radius: 0;
+        }
+
+        .map-actions {
+          margin-bottom: 8px;
+        }
+
+        .map-actions button {
+          min-width: 44px;
+          min-height: 44px;
+          padding: 6px;
+        }
+
+        .icon-palette {
+          bottom: max(8px, env(safe-area-inset-bottom));
+          right: 8px;
+          left: 8px;
+          max-height: 80px;
+          padding: 4px;
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 4px;
+        }
+
+        .palette-item {
+          min-width: 0;
+          justify-content: center;
+          margin: 0;
+          padding: 5px 2px;
+          border-width: 1px;
+        }
+
+        .palette-item span:last-child {
+          display: none;
+        }
+
+        .palette-item span:first-child,
+        .palette-item img {
+          width: 24px;
+          height: 24px;
+        }
+
+        .context-menu-item {
+          min-height: 44px;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+        }
+      }
     </style>
   </head>
 
   <body>
+    <div class="map-actions" aria-label="Map file actions">
+      <button id="exportButton" type="button">Export</button>
+      <button id="importButton" type="button">Import</button>
+      <input id="importInput" type="file" accept="application/json,.json" hidden>
+    </div>
+
     <div class="container">
       <div class="grid" id="grid"></div>
     </div>
@@ -248,6 +343,9 @@
     <script>
       const grid = document.getElementById("grid");
       const palette = document.getElementById("palette");
+      const exportButton = document.getElementById("exportButton");
+      const importButton = document.getElementById("importButton");
+      const importInput = document.getElementById("importInput");
 
       // Create 9x9 grid of cells with labels
       const rows = ["I", "H", "G", "F", "E", "D", "C", "B", "A"];
@@ -272,6 +370,73 @@
       let draggedSVG = null;
       let sourceIcon = null;
       let dropSuccessful = false;
+      let touchDrag = null;
+
+      const getCellAtPoint = (clientX, clientY) => {
+        const element = document.elementFromPoint(clientX, clientY);
+        return element ? element.closest(".cell") : null;
+      };
+
+      const endTouchDrag = () => {
+        if (!touchDrag) return;
+        touchDrag.ghost.remove();
+        touchDrag = null;
+      };
+
+      const finishTouchDrop = (clientX, clientY) => {
+        if (!touchDrag) return;
+
+        const { iconType, iconClass, source, sourceCell } = touchDrag;
+        const targetCell = getCellAtPoint(clientX, clientY);
+        const isValidTarget = targetCell && grid.contains(targetCell);
+        const duplicateIcon = isValidTarget && Array.from(targetCell.querySelectorAll(".icon")).some(
+          (icon) => icon.dataset.iconType === iconType && icon !== source,
+        );
+
+        if (isValidTarget && sourceCell !== targetCell && !duplicateIcon && targetCell.querySelectorAll(".icon").length < 4) {
+          if (source) {
+            source.remove();
+            updateIconPositions(sourceCell);
+          }
+          targetCell.appendChild(createIcon(iconType, iconClass));
+          updateIconPositions(targetCell);
+          saveGrid();
+        } else if (source && !isValidTarget) {
+          source.remove();
+          updateIconPositions(sourceCell);
+          saveGrid();
+        }
+
+        endTouchDrag();
+      };
+
+      const startTouchDrag = (event, item, source = null) => {
+        if (event.pointerType !== "touch") return;
+        event.preventDefault();
+
+        const iconType = item.dataset.icon || item.dataset.iconType;
+        const iconClass = item.dataset.class || item.dataset.iconClass;
+        const ghost = item.cloneNode(true);
+        ghost.className = "touch-drag-ghost";
+        ghost.style.position = "fixed";
+        ghost.style.width = "34px";
+        ghost.style.height = "34px";
+        ghost.style.pointerEvents = "none";
+        ghost.style.zIndex = "2000";
+        document.body.appendChild(ghost);
+        touchDrag = { iconType, iconClass, source, sourceCell: source && source.closest(".cell"), ghost };
+        moveTouchDrag(event);
+      };
+
+      const moveTouchDrag = (event) => {
+        if (!touchDrag) return;
+        touchDrag.ghost.style.left = `${event.clientX - 17}px`;
+        touchDrag.ghost.style.top = `${event.clientY - 17}px`;
+      };
+
+      document.addEventListener("pointermove", moveTouchDrag, { passive: false });
+      document.addEventListener("pointerup", (event) => finishTouchDrop(event.clientX, event.clientY));
+      document.addEventListener("pointercancel", endTouchDrag);
 
       // Icon template URLs
       const iconTemplates = {
@@ -285,15 +450,61 @@
 
       const storageKey = "deep-dessert-grid";
 
-      const saveGrid = () => {
-        const savedIcons = cells.map((cell) => {
+      const getGridData = () => {
+        return cells.map((cell) => {
           return Array.from(cell.querySelectorAll(".icon"), (icon) => ({
             type: icon.dataset.iconType,
             className: icon.dataset.iconClass,
           }));
         });
-        localStorage.setItem(storageKey, JSON.stringify(savedIcons));
       };
+
+      const saveGrid = () => {
+        localStorage.setItem(storageKey, JSON.stringify(getGridData()));
+      };
+
+      const loadGrid = (savedIcons) => {
+        cells.forEach((cell) => cell.querySelectorAll(".icon").forEach((icon) => icon.remove()));
+        savedIcons.slice(0, cells.length).forEach((savedCell, cellIndex) => {
+          const icons = Array.isArray(savedCell) ? savedCell : savedCell ? [savedCell] : [];
+          icons.slice(0, 4).forEach((iconData) => {
+            if (iconData && iconTemplates[iconData.type] && cells[cellIndex]) {
+              cells[cellIndex].appendChild(createIcon(iconData.type, iconData.className));
+            }
+          });
+          updateIconPositions(cells[cellIndex]);
+        });
+        saveGrid();
+      };
+
+      exportButton.addEventListener("click", () => {
+        const file = new Blob([JSON.stringify(getGridData(), null, 2)], { type: "application/json" });
+        const downloadUrl = URL.createObjectURL(file);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = "deep-dessert-map.json";
+        link.click();
+        URL.revokeObjectURL(downloadUrl);
+      });
+
+      importButton.addEventListener("click", () => importInput.click());
+
+      importInput.addEventListener("change", () => {
+        const [file] = importInput.files;
+        if (!file) return;
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          try {
+            const importedGrid = JSON.parse(reader.result);
+            if (!Array.isArray(importedGrid)) throw new Error("Invalid map file");
+            loadGrid(importedGrid);
+          } catch (error) {
+            window.alert("That map file could not be imported.");
+          }
+          importInput.value = "";
+        });
+        reader.readAsText(file);
+      });
 
       const updateIconPositions = (cell) => {
         cell.querySelectorAll(".icon").forEach((icon, index) => {
@@ -327,6 +538,7 @@
         icon.title = iconType;
         icon.dataset.iconType = iconType;
         icon.dataset.iconClass = iconClass;
+        icon.addEventListener("pointerdown", (event) => startTouchDrag(event, icon, icon));
 
         icon.addEventListener("dragstart", (dragStartEvent) => {
           draggedIcon = icon.dataset.iconType;
@@ -376,6 +588,11 @@
           sourceIcon = null;
           e.dataTransfer.effectAllowed = "copy";
         }
+      });
+
+      palette.addEventListener("pointerdown", (event) => {
+        const item = event.target.closest(".palette-item");
+        if (item) startTouchDrag(event, item);
       });
 
       // Grid cell dragging
@@ -561,15 +778,7 @@
 
       try {
         const savedIcons = JSON.parse(localStorage.getItem(storageKey) || "[]");
-        savedIcons.forEach((savedIcon, cellIndex) => {
-          const icons = Array.isArray(savedIcon) ? savedIcon : savedIcon ? [savedIcon] : [];
-          icons.slice(0, 4).forEach((iconData) => {
-            if (iconData && iconTemplates[iconData.type] && cells[cellIndex]) {
-              cells[cellIndex].appendChild(createIcon(iconData.type, iconData.className));
-            }
-          });
-          if (cells[cellIndex]) updateIconPositions(cells[cellIndex]);
-        });
+        if (Array.isArray(savedIcons)) loadGrid(savedIcons);
       } catch (error) {
         localStorage.removeItem(storageKey);
       }
