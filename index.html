@@ -409,6 +409,9 @@
       let sourceIcon = null;
       let dropSuccessful = false;
       let touchDrag = null;
+      let pendingTouch = null;
+      const touchLongPressDelay = 500;
+      const touchMoveThreshold = 8;
 
       const getCellAtPoint = (clientX, clientY) => {
         const element = document.elementFromPoint(clientX, clientY);
@@ -419,6 +422,12 @@
         if (!touchDrag) return;
         touchDrag.ghost.remove();
         touchDrag = null;
+      };
+
+      const cancelPendingTouch = () => {
+        if (!pendingTouch) return;
+        clearTimeout(pendingTouch.timer);
+        pendingTouch = null;
       };
 
       const finishTouchDrop = (clientX, clientY) => {
@@ -473,15 +482,62 @@
         moveTouchDrag(event);
       };
 
+      const queueTouchAction = (event, item, source = null) => {
+        if (event.pointerType !== "touch") return;
+
+        cancelPendingTouch();
+        pendingTouch = {
+          item,
+          source,
+          startX: event.clientX,
+          startY: event.clientY,
+          timer: setTimeout(() => {
+            if (!pendingTouch) return;
+            event.preventDefault();
+            if (source) {
+              selectedIcon = source;
+              contextMenu.style.left = `${event.clientX}px`;
+              contextMenu.style.top = `${event.clientY}px`;
+              contextMenu.classList.add("show");
+            }
+            pendingTouch = null;
+          }, touchLongPressDelay),
+        };
+      };
+
       const moveTouchDrag = (event) => {
         if (!touchDrag) return;
         touchDrag.ghost.style.left = `${event.clientX - 17}px`;
         touchDrag.ghost.style.top = `${event.clientY - 17}px`;
       };
 
-      document.addEventListener("pointermove", moveTouchDrag, { passive: false });
-      document.addEventListener("pointerup", (event) => finishTouchDrop(event.clientX, event.clientY));
-      document.addEventListener("pointercancel", endTouchDrag);
+      document.addEventListener(
+        "pointermove",
+        (event) => {
+          if (pendingTouch) {
+            const movedX = event.clientX - pendingTouch.startX;
+            const movedY = event.clientY - pendingTouch.startY;
+            if (Math.hypot(movedX, movedY) >= touchMoveThreshold) {
+              const { item, source } = pendingTouch;
+              cancelPendingTouch();
+              startTouchDrag(event, item, source);
+            }
+          }
+          moveTouchDrag(event);
+        },
+        { passive: false },
+      );
+      document.addEventListener("pointerup", (event) => {
+        if (pendingTouch) {
+          cancelPendingTouch();
+          return;
+        }
+        finishTouchDrop(event.clientX, event.clientY);
+      });
+      document.addEventListener("pointercancel", () => {
+        cancelPendingTouch();
+        endTouchDrag();
+      });
 
       // Icon template URLs
       const iconTemplates = {
@@ -583,7 +639,7 @@
         icon.title = iconType;
         icon.dataset.iconType = iconType;
         icon.dataset.iconClass = iconClass;
-        icon.addEventListener("pointerdown", (event) => startTouchDrag(event, icon, icon));
+        icon.addEventListener("pointerdown", (event) => queueTouchAction(event, icon, icon));
 
         icon.addEventListener("dragstart", (dragStartEvent) => {
           draggedIcon = icon.dataset.iconType;
@@ -637,7 +693,7 @@
 
       palette.addEventListener("pointerdown", (event) => {
         const item = event.target.closest(".palette-item");
-        if (item) startTouchDrag(event, item);
+        if (item) queueTouchAction(event, item);
       });
 
       // Grid cell dragging
@@ -758,6 +814,8 @@
         const icon = e.target.closest(".icon");
         if (icon) {
           e.preventDefault();
+          cancelPendingTouch();
+          endTouchDrag();
           selectedIcon = icon;
           contextMenu.style.left = e.clientX + "px";
           contextMenu.style.top = e.clientY + "px";
